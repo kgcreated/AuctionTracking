@@ -17,72 +17,84 @@ sport_map = {"NBA Basketball": "basketball_nba", "NFL Football": "americanfootba
 
 API_KEY = os.environ.get("THE_ODDS_API_KEY") or st.secrets.get("THE_ODDS_API_KEY")
 
-# --- DATA FETCHING ---
 try:
-    # 1. Fetch Upcoming/Live Odds
+    # 1. Fetch Data
     odds_url = f"https://api.the-odds-api.com/v4/sports/{sport_map[sport_choice]}/odds/?apiKey={API_KEY}&regions=us&markets=h2h"
-    live_data = requests.get(odds_url).json()
-
-    # 2. Fetch Recent Scores/Past Games (Last 3 days)
     scores_url = f"https://api.the-odds-api.com/v4/sports/{sport_map[sport_choice]}/scores/?apiKey={API_KEY}&daysFrom=3"
+    
+    live_data = requests.get(odds_url).json()
     past_data = requests.get(scores_url).json()
 
-    # Combine them into one master list
     all_games = []
-    
-    # Add Live Games
     if isinstance(live_data, list):
         for g in live_data:
             all_games.append({"label": f"🟢 [LIVE] {g['away_team']} @ {g['home_team']}", "data": g, "type": "live"})
-    
-    # Add Past Games
     if isinstance(past_data, list):
         for g in past_data:
             if g.get('completed'):
                 all_games.append({"label": f"🏁 [FINAL] {g['away_team']} @ {g['home_team']}", "data": g, "type": "past"})
 
     if all_games:
-        # Create the dropdown with both types of games
-        selected_label = st.selectbox("🎯 Select Matchup to View:", [g['label'] for g in all_games])
+        selected_label = st.selectbox("🎯 Select Matchup:", [g['label'] for g in all_games])
         selected_game = next(item for item in all_games if item["label"] == selected_label)
         g_data = selected_game["data"]
 
-        # Display Info based on game type
         if selected_game["type"] == "past":
-            st.warning("This game is finished. Showing closing lines and final score.")
             if g_data.get('scores'):
                 s = g_data['scores']
                 st.subheader(f"🏆 Final: {s[0]['name']} {s[0]['score']} - {s[1]['name']} {s[1]['score']}")
         
         if st.button("Analyze Odds"):
             time_now = datetime.now().strftime("%H:%M:%S")
-            # Pull bookmaker data (Common to both endpoints)
-            for book in g_data.get('bookmakers', []):
+            found_any_odds = False
+            
+            # Search for bookmakers in the data structure
+            books = g_data.get('bookmakers', [])
+            
+            if not books:
+                st.warning("No closing odds found in the score record. Trying to re-sync...")
+            
+            for book in books:
                 if book['key'] in ['draftkings', 'fanduel', 'caesars', 'williamhill_us']:
                     label = "Caesars" if "williamhill" in book['key'] else book['title']
+                    # Get the odds for the first outcome (Away Team)
                     odds = book['markets'][0]['outcomes'][0]['price']
+                    team_name = book['markets'][0]['outcomes'][0]['name']
+                    
                     st.session_state.history.append({
                         'Time': time_now, 
                         'Game': selected_label, 
                         'Bookmaker': label, 
+                        'Team': team_name,
                         'Odds': odds
                     })
-            st.success("Lines Loaded!")
+                    found_any_odds = True
+            
+            if found_any_odds:
+                st.success("Closing Lines Loaded!")
+            else:
+                st.error("The API provided the score but did not include the bookmaker lines for this finished game.")
 
 except Exception as e:
     st.error(f"API Error: {e}")
 
-# --- GRAPHING ---
+# --- DISPLAY DATA ---
 if st.session_state.history:
     df = pd.DataFrame(st.session_state.history)
-    if 'selected_label' in locals():
-        f_df = df[df['Game'] == selected_label]
-        if not f_df.empty:
-            fig = px.line(f_df, x='Time', y='Odds', color='Bookmaker', markers=True, title=f"Price History: {selected_label}")
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Clear button
-            if st.button("Clear Graph"):
-                st.session_state.history = []
-                st.rerun()
+    f_df = df[df['Game'] == selected_label]
+    
+    if not f_df.empty:
+        # Show a Table first so he sees the numbers immediately
+        st.write("### 💵 Closing Odds Table")
+        latest_table = f_df.groupby('Bookmaker').last().reset_index()
+        st.table(latest_table[['Bookmaker', 'Team', 'Odds']])
+
+        # Show the Graph
+        fig = px.line(f_df, x='Time', y='Odds', color='Bookmaker', markers=True, 
+                     title=f"Odds Movement for {selected_label}")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        if st.button("Clear Cache"):
+            st.session_state.history = []
+            st.rerun()
 
