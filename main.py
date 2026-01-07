@@ -8,7 +8,7 @@ if "bankroll" not in st.session_state:
 if "bet_history" not in st.session_state:
     st.session_state.bet_history = []
 
-st.title("🏆 A’s Sulayve Stats")
+st.title("Giving Sulayve Stats")
 st.write("---")
 
 # Wallet RN Section
