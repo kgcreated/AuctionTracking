@@ -2,24 +2,24 @@ import streamlit as st
 
 st.set_page_config(page_title="Auction Tracking", layout="wide", page_icon="🏆")
 
-st.title("🏆 Auction Tracking: Home")
+st.title(" Knee-gar Oddd: Home")
 
 # Sidebar Bankroll
 if "bankroll" not in st.session_state:
     st.session_state.bankroll = 1000.0
 
 st.sidebar.header("Wallet")
-st.session_state.bankroll = st.sidebar.number_input("Total Bankroll ($)", value=st.session_state.bankroll)
+st.session_state.wallet = st.sidebar.number_input("Total wallet ($)", value=st.session_state.wallet)
 
 # Main Screen Instructions
 st.write("---")
 st.success("✅ **System Online:** Connected to The Odds API")
-st.write("### Quick Start Guide")
-st.info("👈 **Tap the arrow in the top-left corner** to open the navigation menu!")
+st.write("### Guide")
+st.info("👈 **Tap the arrow in the top-left corner** to open the graphs and calcs!")
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Current Bankroll", f"${st.session_state.bankroll}")
-col2.write("**Step 1:** Check Line Graphs for movement.")
-col3.write("**Step 2:** Use Edge Finder to calculate bet size.")
+col1.metric("Wallet rn", f"${st.session_state.wallet}")
+col2.write(" Check Line Graphs for Line Odds.")
+col3.write(" Use Calculators to calculate bet size/taxes.")
 
-st.warning("Keep this tab open while betting to track real-time changes.")
+st.warning("Trust ur gut, but maybe this will help (except with lamar/ravens u musst use pure vibes).")
