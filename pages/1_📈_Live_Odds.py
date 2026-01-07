@@ -5,95 +5,89 @@ import requests
 import os
 from datetime import datetime
 
-st.set_page_config(page_title="A's Sulayve Stats", layout="wide")
+st.set_page_config(page_title="Live Tracker", layout="wide")
 
-# Initialize memory
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "snapshot_vault" not in st.session_state:
-    st.session_state.snapshot_vault = {}
+# Memory for Graph & Vault
+if "history" not in st.session_state: st.session_state.history = []
+if "snapshot_vault" not in st.session_state: st.session_state.snapshot_vault = {}
 
-st.title("📊 Market Tracker: Live & Past")
+st.title("📊 Live Market Tracker")
 
-sport_choice = st.radio("Market:", ["NBA Basketball", "NFL Football"], horizontal=True)
-sport_map = {"NBA Basketball": "basketball_nba", "NFL Football": "americanfootball_nfl"}
+# 1. API CONFIG
+API_KEY = os.environ.get("THE_ODDS_API_KEY")
+sport = st.radio("Sport:", ["NBA Basketball", "NFL Football"], horizontal=True)
+sport_key = "basketball_nba" if "NBA" in sport else "americanfootball_nfl"
 
-API_KEY = os.environ.get("THE_ODDS_API_KEY") or st.secrets.get("THE_ODDS_API_KEY")
-
-# --- DATA FETCHING ---
-current_game_label = "None"
-all_games = []
-
+# 2. DATA PULL
 try:
-    odds_url = f"https://api.the-odds-api.com/v4/sports/{sport_map[sport_choice]}/odds/?apiKey={API_KEY}&regions=us&markets=h2h"
-    scores_url = f"https://api.the-odds-api.com/v4/sports/{sport_map[sport_choice]}/scores/?apiKey={API_KEY}&daysFrom=3"
+    odds_url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/?apiKey={API_KEY}&regions=us&markets=h2h"
+    scores_url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/scores/?apiKey={API_KEY}&daysFrom=1"
     
     live_res = requests.get(odds_url).json()
     past_res = requests.get(scores_url).json()
 
-    if isinstance(live_res, list):
-        for g in live_res:
-            all_games.append({"label": f"🟢 [LIVE] {g['away_team']} @ {g['home_team']}", "data": g, "is_completed": False})
-    if isinstance(past_res, list):
-        for g in past_res:
-            if g.get('completed'):
-                all_games.append({"label": f"🏁 [FINAL] {g['away_team']} @ {g['home_team']}", "data": g, "is_completed": True})
+    all_games = []
+    # Add Past Games first
+    for g in (past_res if isinstance(past_res, list) else []):
+        if g.get('completed'):
+            all_games.append({"label": f"🏁 [FINAL] {g['away_team']} @ {g['home_team']}", "data": g, "type": "past"})
+    # Add Live Games
+    for g in (live_res if isinstance(live_res, list) else []):
+        all_games.append({"label": f"🟢 [LIVE] {g['away_team']} @ {g['home_team']}", "data": g, "type": "live"})
 
     if all_games:
-        current_game_label = st.selectbox("🎯 Target Game:", [g['label'] for g in all_games])
-        selected_obj = next(item for item in all_games if item["label"] == current_game_label)
-        selected_data = selected_obj["data"]
+        selected_label = st.selectbox("🎯 Pick Matchup:", [g['label'] for g in all_games])
+        selected_game = next(x for x in all_games if x['label'] == selected_label)
+        g_data = selected_game['data']
 
-        if selected_obj["is_completed"] and "scores" in selected_data:
-            s = selected_data["scores"]
-            st.header(f"🏆 Final: {s[0]['name']} {s[0]['score']} - {s[1]['name']} {s[1]['score']}")
+        # Score Display
+        if selected_game['type'] == 'past' and g_data.get('scores'):
+            s = g_data['scores']
+            st.subheader(f"🏆 {s[0]['name']} {s[0]['score']} - {s[1]['name']} {s[1]['score']}")
 
-        if st.button("Scan Market Data"):
-            time_now = datetime.now().strftime("%H:%M:%S")
+        if st.button("🔥 SCAN MARKET"):
+            time_now = datetime.now().strftime("%H:%M")
             prices = []
             
-            books = selected_data.get('bookmakers', [])
-            for book in books:
+            for book in g_data.get('bookmakers', []):
                 if book['key'] in ['draftkings', 'fanduel', 'caesars', 'williamhill_us']:
-                    label = "Caesars" if "williamhill" in book['key'] else book['title']
+                    label = "Caesars" if "william" in book['key'] else book['title']
                     odds = book['markets'][0]['outcomes'][0]['price']
-                    team = book['markets'][0]['outcomes'][0]['name']
                     
-                    prices.append({'Book': label, 'Team': team, 'Odds': odds})
-                    st.session_state.history.append({'Time': time_now, 'Game': current_game_label, 'Bookmaker': label, 'Odds': odds})
+                    # INACCURACY CHECK: Check if data is stale
+                    update_time = datetime.fromtimestamp(book.get('last_update', 0))
+                    is_fresh = (datetime.now() - update_time).total_seconds() < 3600 # 1 hour
+                    
+                    prices.append({
+                        'Book': label, 'Odds': odds, 
+                        'Status': "✅ FRESH" if is_fresh else "⚠️ STALE",
+                        'Update': update_time.strftime("%H:%M")
+                    })
+                    st.session_state.history.append({'Time': time_now, 'Game': selected_label, 'Bookmaker': label, 'Odds': odds})
             
             if prices:
-                st.session_state.snapshot_vault[current_game_label] = prices
-                
-                # --- NEW: STALE LINE DETECTION ---
-                # 1. Get Consensus (DraftKings & FanDuel average)
-                sharp_odds = [p['Odds'] for p in prices if p['Book'] in ['DraftKings', 'FanDuel']]
-                if len(sharp_odds) >= 2:
-                    consensus = sum(sharp_odds) / len(sharp_odds)
-                    
-                    # 2. Compare every book to that Consensus
+                # STALE LINE ALERT LOGIC
+                dk_fd = [p['Odds'] for p in prices if p['Book'] in ['DraftKings', 'FanDuel']]
+                if len(dk_fd) >= 1:
+                    avg = sum(dk_fd)/len(dk_fd)
                     for p in prices:
-                        # Deviation logic: if a book is at least 7 points better than consensus
-                        # (e.g. Consensus is -120, but Caesars is -110)
-                        if p['Odds'] >= (consensus + 7):
-                            st.warning(f"🚨 **STALE LINE ALERT:** {p['Book']} is lagging the market!")
-                            st.write(f"The Sharp Consensus is **{consensus:.0f}**, but {p['Book']} is still at **{p['Odds']}**.")
-                            st.info("💡 This is a 'Market Deviation'. Bet this before they catch up!")
+                        if p['Odds'] >= (avg + 7):
+                            st.warning(f"🚨 STALE LINE: {p['Book']} lagging at {p['Odds']} (Market: {avg:.0f})")
                 
-                st.success("Snapshot Locked!")
+                st.session_state.snapshot_vault[selected_label] = prices
 
-except Exception as e:
-    st.error(f"Waiting for connection... {e}")
+except:
+    st.error("API Connection Pending...")
 
 # --- DISPLAY ---
-st.divider()
-if current_game_label in st.session_state.snapshot_vault:
-    st.write(f"### 💵 Verified Odds: {current_game_label}")
-    st.table(pd.DataFrame(st.session_state.snapshot_vault[current_game_label]))
+if selected_label in st.session_state.snapshot_vault:
+    st.write("### 💵 Latest Snapshot")
+    st.table(pd.DataFrame(st.session_state.snapshot_vault[selected_label]))
 
 if st.session_state.history:
     df = pd.DataFrame(st.session_state.history)
-    f_df = df[df['Game'] == current_game_label]
+    f_df = df[df['Game'] == selected_label]
     if not f_df.empty:
-        fig = px.line(f_df, x='Time', y='Odds', color='Bookmaker', markers=True, title="Market Movement")
+        fig = px.line(f_df, x='Time', y='Odds', color='Bookmaker', markers=True, title="Market Auction Graph")
         st.plotly_chart(fig, use_container_width=True)
+
