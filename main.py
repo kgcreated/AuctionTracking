@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.set_page_config(page_title="Auction Tracking", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Shays Tracking", layout="wide", page_icon="🏆")
 
 st.title(" Knee-gar Oddd: Home")
 
