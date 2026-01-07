@@ -1,7 +1,7 @@
 import streamlit as st
 
-st.title("⚖️ Vig Calculator")
-st.write("Find out how much the sportsbook is 'taxing' the line.")
+st.title("Rake poker ref.lol Calculator")
+st.write("see out how much the sportsbook is 'taxing' the line.")
 
 col1, col2 = st.columns(2)
 odds_a = col1.number_input("Away Team Odds", value=-110)
