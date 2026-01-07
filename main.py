@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.set_page_config(page_title="A's Sulayve Stats", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Giving Sulayve Stats", layout="wide", page_icon="🏆")
 
 # Memory setup for Wallet and History
 if "bankroll" not in st.session_state:
