@@ -1,25 +1,28 @@
 import streamlit as st
 
-st.set_page_config(page_title="Shays Tracking", layout="wide", page_icon="🏆")
+# This changes what he sees on his browser tab
+st.set_page_config(page_title="A's Sulayve Stats", layout="wide", page_icon="🏆")
 
-st.title(" Knee-gar Oddd: Home")
-
-# Sidebar Bankroll
+# Memory setup
 if "bankroll" not in st.session_state:
     st.session_state.bankroll = 1000.0
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-st.sidebar.header("Wallet")
-st.session_state.wallet = st.sidebar.number_input("Total wallet ($)", value=st.session_state.wallet)
+# This is the big title at the top of the home screen
+st.title("🏆 A’s Sulayve Stats")
 
-# Main Screen Instructions
+st.divider()
+
+# The "Wallet RN" section
+st.subheader("Wallet RN")
+st.session_state.bankroll = st.number_input("Update your bankroll:", value=st.session_state.bankroll)
+
 st.write("---")
-st.success("✅ **System Online:** Connected to The Odds API")
-st.write("### Guide")
-st.info("👈 **Tap the arrow in the top-left corner** to open the graphs and calcs!")
+st.success("✅ Market Data: Connected")
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Wallet rn", f"${st.session_state.wallet}")
-col2.write(" Check Line Graphs for Line Odds.")
-col3.write(" Use Calculators to calculate bet size/taxes.")
-
-st.warning("Trust ur gut, but maybe this will help (except with lamar/ravens u musst use pure vibes).")
+# Visual Metrics
+col1, col2 = st.columns(2)
+col1.metric("Available Funds", f"${st.session_state.bankroll:,.2f}")
+col2.write("### Quick Tips")
+col2.info("Use the sidebar to flip between live odds and edge calculations.")
