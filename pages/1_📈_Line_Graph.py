@@ -5,13 +5,13 @@ import requests
 import os
 from datetime import datetime
 
-# Initialize memory in case they skip home
+# --- INITIALIZATION ---
 if "history" not in st.session_state:
     st.session_state.history = []
 
-st.title("📈 Real-Time Line Tracker")
+st.title("📈 Live Auction Tracker")
 
-# Sport Selector
+# 1. SPORT SELECTOR
 sport_choice = st.radio("Select Market:", ["NBA Basketball", "NFL Football"], horizontal=True)
 sport_map = {"NBA Basketball": "basketball_nba", "NFL Football": "americanfootball_nfl"}
 
@@ -21,46 +21,56 @@ if not API_KEY:
     st.error("⚠️ API Key missing from Render Environment Variables.")
     st.stop()
 
-if st.button(f"Refresh {sport_choice} Odds"):
-    url = f"https://api.the-odds-api.com/v4/sports/{sport_map[sport_choice]}/odds/?apiKey={API_KEY}&regions=us&markets=h2h"
+# 2. FETCH ALL GAMES FOR THE SELECTOR
+url = f"https://api.the-odds-api.com/v4/sports/{sport_map[sport_choice]}/odds/?apiKey={API_KEY}&regions=us&markets=h2h"
+
+try:
+    response = requests.get(url)
+    all_data = response.json()
     
-    try:
-        response = requests.get(url)
-        data = response.json()
+    if not all_data:
+        st.warning(f"No live {sport_choice} games found right now.")
+    else:
+        # Create a list of game titles for the dropdown
+        game_titles = [f"{g['away_team']} @ {g['home_team']}" for g in all_data]
+        selected_game_title = st.selectbox("🎯 Pick a Game to Track:", game_titles)
         
-        if not data:
-            st.warning(f"No live {sport_choice} lines found right now.")
-        else:
+        # Find the data for the selected game
+        selected_game_data = next(g for g in all_data if f"{g['away_team']} @ {g['home_team']}" == selected_game_title)
+
+        if st.button("Refresh Selected Game"):
             time_now = datetime.now().strftime("%H:%M:%S")
-            game = data[0] # Focuses on the most imminent game
-            st.info(f"Tracking: **{game['away_team']} @ {game['home_team']}**")
             
-            for book in game['bookmakers']:
-                # 'williamhill_us' is the API name for Caesars in many US states
+            for book in selected_game_data['bookmakers']:
+                # Ensure Caesars is included (check both key names)
                 if book['key'] in ['draftkings', 'fanduel', 'caesars', 'williamhill_us']:
                     label = "Caesars" if "williamhill" in book['key'] else book['title']
+                    
                     st.session_state.history.append({
                         'Time': time_now, 
-                        'Sport': sport_choice,
+                        'Game': selected_game_title,
                         'Bookmaker': label, 
                         'Odds': book['markets'][0]['outcomes'][0]['price']
                     })
-            st.success("Market Data Updated!")
-    except Exception as e:
-        st.error(f"Connection Error: {e}")
+            st.success(f"Updated {selected_game_title}!")
 
-# Graph Logic
+except Exception as e:
+    st.error(f"Connection Error: {e}")
+
+# --- DRAW THE GRAPH ---
 if st.session_state.history:
     df = pd.DataFrame(st.session_state.history)
-    filtered_df = df[df['Sport'] == sport_choice]
     
-    if not filtered_df.empty:
-        fig = px.line(filtered_df, x='Time', y='Odds', color='Bookmaker', markers=True,
-                     title=f"Live {sport_choice} Auction Movement")
-        st.plotly_chart(fig, use_container_width=True)
+    # Only show data for the game currently selected in the dropdown
+    # (This prevents lines from different games getting mixed on one graph)
+    if 'selected_game_title' in locals():
+        filtered_df = df[df['Game'] == selected_game_title]
         
-        if st.button("Clear History"):
-            st.session_state.history = []
-            st.rerun()
-    else:
-        st.info(f"No data for {sport_choice} yet. Hit Refresh!")
+        if not filtered_df.empty:
+            fig = px.line(filtered_df, x='Time', y='Odds', color='Bookmaker', markers=True,
+                         title=f"Line Movement: {selected_game_title}")
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Show a small table of the latest prices
+            st
+
