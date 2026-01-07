@@ -97,4 +97,20 @@ if st.session_state.history:
         if st.button("Clear Cache"):
             st.session_state.history = []
             st.rerun()
+# Create a permanent 'Vault' in the background
+if "line_vault" not in st.session_state:
+    st.session_state.line_vault = {}
+
+# Inside your 'Refresh' button logic, add this:
+current_game_key = f"{selected_game_label}"
+st.session_state.line_vault[current_game_key] = prices # Saves the last seen odds
+
+# At the bottom of the page, show the Vault
+with st.expander("📚 View Saved Closing Lines"):
+    if st.session_state.line_vault:
+        for game, data in st.session_state.line_vault.items():
+            st.write(f"**{game}**")
+            st.table(pd.DataFrame(data))
+    else:
+        st.write("No snapshots saved yet. Hit 'Refresh' while a game is live to save it!")
 
