@@ -5,7 +5,7 @@ import requests
 import os
 from datetime import datetime, timezone
 
-st.set_page_config(page_title="A's Sulayve Stats", layout="wide")
+st.set_page_config(page_title="A.Sulayve Stats", layout="wide")
 
 # --- 1. MEMORY SETUP ---
 # We removed the @st.cache_data so every "Scan" is a fresh, direct pull
