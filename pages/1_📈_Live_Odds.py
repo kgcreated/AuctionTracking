@@ -53,7 +53,7 @@ if live_data:
     selected_game = st.selectbox("Select Game:", game_list)
     g_data = next((x for x in live_data if f"{x['away_team']} @ {x['home_team']}" == selected_game), None)
 
-    if g_data and st.button("🔥 Sync & Align Odds", use_container_width=True):
+    if g_data and st.button(" Get Odds", use_container_width=True):
         now_local = datetime.now(local_tz).strftime("%I:%M:%S %p")
         current_prices = []
         
