@@ -30,7 +30,7 @@ def format_line(val):
 
 # --- 3. THE INTERFACE ---
 st.title("🏆 Official Market Mirror: ML & Totals")
-st.info("Logic: Team-Name Matching is active. Numbers are locked to the correct team regardless of API order.")
+st.info("")
 
 API_KEY = os.environ.get("THE_ODDS_API_KEY")
 sport_choice = st.radio("Market:", ["NBA Basketball", "NFL Football"], horizontal=True, key="live_market_radio")
