@@ -96,7 +96,7 @@ if live_data:
             st.session_state.snapshot_vault[selected_game] = current_prices
             with open(VAULT_FILE, "w") as f:
                 json.dump(st.session_state.snapshot_vault, f)
-            st.success(f"Aligned successfully for {selected_game}")
+            st.success(f"Stats for {selected_game}")
 
 # --- 4. DISPLAY ---
 st.divider()
