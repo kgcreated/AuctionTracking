@@ -17,13 +17,20 @@ VAULT_FILE = "betting_vault.json"
 
 # --- 2. FORMATTING HELPERS ---
 def format_odds(val):
-    if val == 0 or val is None: return "N/A"
-    # The API now sends -115 or 110 directly as integers
-    return f"+{val}" if val > 0 else str(val)
+    if pd.isna(val) or val == 0 or val is None: return "-"
+    try:
+        num = int(float(val))
+        return f"+{num}" if num > 0 else str(num)
+    except:
+        return "-"
+
+def format_line(val):
+    if pd.isna(val) or val is None: return "-"
+    return f"{float(val):.1f}"
 
 # --- 3. THE INTERFACE ---
 st.title("🏆 Official Market Mirror: ML & Totals")
-st.info("Direct Sync: This version pulls Official American Odds directly from the books with zero rounding math.")
+st.info("Direct Sync: This version uses Team-Name Matching to ensure Home/Away columns never switch.")
 
 API_KEY = os.environ.get("THE_ODDS_API_KEY")
 sport_choice = st.radio("Market:", ["NBA Basketball", "NFL Football"], horizontal=True, key="live_market_radio")
@@ -32,7 +39,6 @@ sport_map = {"NBA Basketball": "basketball_nba", "NFL Football": "americanfootba
 def get_data():
     if not API_KEY: return None
     t_stamp = int(datetime.now().timestamp())
-    # CHANGE: We are now requesting 'oddsFormat=american'
     url = f"https://api.the-odds-api.com/v4/sports/{sport_map[sport_choice]}/odds/?apiKey={API_KEY}&regions=us&markets=h2h,totals&oddsFormat=american&t={t_stamp}"
     try:
         res = requests.get(url).json()
@@ -51,25 +57,38 @@ if live_data:
         now_local = datetime.now(local_tz).strftime("%I:%M:%S %p")
         current_prices = []
         
+        # KEY FIX: Store the official Away and Home names for this game
+        OFFICIAL_AWAY = g_data['away_team']
+        OFFICIAL_HOME = g_data['home_team']
+        
         for book in g_data.get('bookmakers', []):
             if book['key'] in ['draftkings', 'fanduel', 'caesars', 'williamhill_us']:
                 label = "Caesars" if "william" in book['key'] else book['title']
-                entry = {'Book': label, 'Time': now_local}
+                entry = {
+                    'Book': label, 
+                    'Away ML': None, 'Home ML': None, 
+                    'O/U Line': None, 'Over': None, 'Under': None,
+                    'Time': now_local
+                }
                 
                 for market in book['markets']:
+                    # H2H (Moneyline) Alignment Fix
                     if market['key'] == 'h2h':
-                        # Pulling the direct American integer from the API
-                        entry['Away ML'] = market['outcomes'][0]['price']
-                        entry['Home ML'] = market['outcomes'][1]['price']
+                        for outcome in market['outcomes']:
+                            if outcome['name'] == OFFICIAL_AWAY:
+                                entry['Away ML'] = outcome['price']
+                            elif outcome['name'] == OFFICIAL_HOME:
+                                entry['Home ML'] = outcome['price']
                     
+                    # Totals Alignment
                     if market['key'] == 'totals':
                         over = next((o for o in market['outcomes'] if o['name'] == 'Over'), None)
+                        under = next((o for o in market['outcomes'] if o['name'] == 'Under'), None)
                         if over:
-                            entry['O/U Line'] = round(float(over['point']), 1)
+                            entry['O/U Line'] = over['point']
                             entry['Over'] = over['price']
-                            under = next((o for o in market['outcomes'] if o['name'] == 'Under'), None)
-                            if under:
-                                entry['Under'] = under['price']
+                        if under:
+                            entry['Under'] = under['price']
                 
                 current_prices.append(entry)
         
@@ -77,7 +96,7 @@ if live_data:
             st.session_state.snapshot_vault[selected_game] = current_prices
             with open(VAULT_FILE, "w") as f:
                 json.dump(st.session_state.snapshot_vault, f)
-            st.success(f"Official Mirror Snapshot Saved at {now_local}")
+            st.success(f"Snapshot Saved & Aligned at {now_local}")
 
 # --- 4. DISPLAY ---
 st.divider()
@@ -86,14 +105,18 @@ if 'selected_game' in locals() and selected_game in st.session_state.snapshot_va
     st.write(f"### 📊 Direct Market Snapshot: {selected_game}")
     df = pd.DataFrame(st.session_state.snapshot_vault[selected_game])
     
-    cols_to_show = ['Book', 'Away ML', 'Home ML', 'O/U Line', 'Over', 'Under', 'Time']
-    available_cols = [c for c in cols_to_show if c in df.columns]
-    df = df[available_cols]
-
     display_df = df.copy()
+    
+    # Apply clean formatting
+    if 'O/U Line' in display_df.columns:
+        display_df['O/U Line'] = display_df['O/U Line'].apply(format_line)
+        
     for col in ['Away ML', 'Home ML', 'Over', 'Under']:
         if col in display_df.columns:
             display_df[col] = display_df[col].apply(format_odds)
 
-    st.table(display_df)
+    # Force standard column order
+    cols_order = ['Book', 'Away ML', 'Home ML', 'O/U Line', 'Over', 'Under', 'Time']
+    display_df = display_df[[c for c in cols_order if c in display_df.columns]]
 
+    st.table(display_df)
