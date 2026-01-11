@@ -29,7 +29,7 @@ def format_line(val):
     return f"{float(val):.1f}"
 
 # --- 3. THE INTERFACE ---
-st.title("🏆 Official Market Mirror: ML & Totals")
+st.title("Live ODDS & Lines")
 st.info("")
 
 API_KEY = os.environ.get("THE_ODDS_API_KEY")
