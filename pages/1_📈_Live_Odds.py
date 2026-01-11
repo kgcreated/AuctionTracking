@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 import pytz
 
-st.set_page_config(page_title="A's Mirror Tracker", layout="wide")
+st.set_page_config(page_title="A's Precise Mirror", layout="wide")
 
 # --- 1. INITIALIZE ---
 if "snapshot_vault" not in st.session_state:
@@ -30,7 +30,7 @@ def format_line(val):
 
 # --- 3. THE INTERFACE ---
 st.title("🏆 Official Market Mirror: ML & Totals")
-st.info("Direct Sync: This version uses Team-Name Matching to ensure Home/Away columns never switch.")
+st.info("Logic: Team-Name Matching is active. Numbers are locked to the correct team regardless of API order.")
 
 API_KEY = os.environ.get("THE_ODDS_API_KEY")
 sport_choice = st.radio("Market:", ["NBA Basketball", "NFL Football"], horizontal=True, key="live_market_radio")
@@ -53,11 +53,11 @@ if live_data:
     selected_game = st.selectbox("Select Game:", game_list)
     g_data = next((x for x in live_data if f"{x['away_team']} @ {x['home_team']}" == selected_game), None)
 
-    if g_data and st.button("🔥 Sync Official Odds", use_container_width=True):
+    if g_data and st.button("🔥 Sync & Align Odds", use_container_width=True):
         now_local = datetime.now(local_tz).strftime("%I:%M:%S %p")
         current_prices = []
         
-        # KEY FIX: Store the official Away and Home names for this game
+        # DEFINE THE ANCHORS
         OFFICIAL_AWAY = g_data['away_team']
         OFFICIAL_HOME = g_data['home_team']
         
@@ -72,7 +72,7 @@ if live_data:
                 }
                 
                 for market in book['markets']:
-                    # H2H (Moneyline) Alignment Fix
+                    # THE ML FIX: Explicitly match name to price
                     if market['key'] == 'h2h':
                         for outcome in market['outcomes']:
                             if outcome['name'] == OFFICIAL_AWAY:
@@ -80,7 +80,7 @@ if live_data:
                             elif outcome['name'] == OFFICIAL_HOME:
                                 entry['Home ML'] = outcome['price']
                     
-                    # Totals Alignment
+                    # THE TOTALS FIX
                     if market['key'] == 'totals':
                         over = next((o for o in market['outcomes'] if o['name'] == 'Over'), None)
                         under = next((o for o in market['outcomes'] if o['name'] == 'Under'), None)
@@ -96,26 +96,26 @@ if live_data:
             st.session_state.snapshot_vault[selected_game] = current_prices
             with open(VAULT_FILE, "w") as f:
                 json.dump(st.session_state.snapshot_vault, f)
-            st.success(f"Snapshot Saved & Aligned at {now_local}")
+            st.success(f"Aligned successfully for {selected_game}")
 
 # --- 4. DISPLAY ---
 st.divider()
 
 if 'selected_game' in locals() and selected_game in st.session_state.snapshot_vault:
-    st.write(f"### 📊 Direct Market Snapshot: {selected_game}")
+    st.write(f"### 📊 Final Aligned Snapshot: {selected_game}")
     df = pd.DataFrame(st.session_state.snapshot_vault[selected_game])
     
     display_df = df.copy()
     
-    # Apply clean formatting
+    # Format columns for a clean look
     if 'O/U Line' in display_df.columns:
         display_df['O/U Line'] = display_df['O/U Line'].apply(format_line)
-        
+    
     for col in ['Away ML', 'Home ML', 'Over', 'Under']:
         if col in display_df.columns:
             display_df[col] = display_df[col].apply(format_odds)
 
-    # Force standard column order
+    # Final column order
     cols_order = ['Book', 'Away ML', 'Home ML', 'O/U Line', 'Over', 'Under', 'Time']
     display_df = display_df[[c for c in cols_order if c in display_df.columns]]
 
