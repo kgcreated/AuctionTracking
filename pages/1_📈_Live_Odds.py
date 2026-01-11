@@ -8,7 +8,12 @@ import pytz
 
 st.set_page_config(page_title="A's Full Market Tracker", layout="wide")
 
-# --- 1. SETTINGS ---
+# --- 1. THE FIX: INITIALIZE SESSION STATE FIRST ---
+# This MUST be before any buttons or data pulls
+if "snapshot_vault" not in st.session_state:
+    st.session_state.snapshot_vault = {}
+
+# --- 2. SETTINGS & STORAGE ---
 local_tz = pytz.timezone('US/Eastern')
 VAULT_FILE = "betting_vault.json"
 
@@ -16,10 +21,24 @@ def save_to_vault(data):
     try:
         with open(VAULT_FILE, "w") as f:
             json.dump(data, f)
-    except:
-        pass
+    except Exception as e:
+        st.error(f"Save error: {e}")
 
-# --- 2. ODDS CONVERTER ---
+def load_vault_into_session():
+    if os.path.exists(VAULT_FILE):
+        try:
+            with open(VAULT_FILE, "r") as f:
+                loaded_data = json.load(f)
+                # Only update if it's not empty
+                if loaded_data:
+                    st.session_state.snapshot_vault.update(loaded_data)
+        except Exception:
+            pass
+
+# Run the load once per page load
+load_vault_into_session()
+
+# --- 3. ODDS CONVERTER ---
 def to_american(decimal_odds):
     try:
         decimal_odds = float(decimal_odds)
@@ -33,14 +52,13 @@ def to_american(decimal_odds):
 def format_odds(val):
     return f"+{val}" if val > 0 else str(val)
 
-# --- 3. THE APP ---
-st.title("🏆 Full Market Auction: Moneyline & Totals")
+# --- 4. THE INTERFACE ---
+st.title("🏆 Full Market Auction: ML & Totals")
 
 API_KEY = os.environ.get("THE_ODDS_API_KEY")
 sport_choice = st.radio("Market:", ["NBA Basketball", "NFL Football"], horizontal=True, key="live_market_radio")
 sport_map = {"NBA Basketball": "basketball_nba", "NFL Football": "americanfootball_nfl"}
 
-# FETCH DATA (Now asking for BOTH h2h and totals)
 def get_data():
     if not API_KEY: return None
     t_stamp = int(datetime.now().timestamp())
@@ -66,49 +84,51 @@ if live_data:
         for book in g_data.get('bookmakers', []):
             if book['key'] in ['draftkings', 'fanduel', 'caesars', 'williamhill_us']:
                 label = "Caesars" if "william" in book['key'] else book['title']
-                
                 entry = {'Book': label, 'Time': now_local}
                 
-                # Extract Markets
+                # Check for both markets in the response
                 for market in book['markets']:
-                    # Moneyline (h2h)
                     if market['key'] == 'h2h':
-                        # Away Team is usually index 0, Home is index 1
                         entry['Away ML'] = to_american(market['outcomes'][0]['price'])
                         entry['Home ML'] = to_american(market['outcomes'][1]['price'])
                     
-                    # Over/Under (totals)
                     if market['key'] == 'totals':
-                        over = next(o for o in market['outcomes'] if o['name'] == 'Over')
-                        under = next(o for o in market['outcomes'] if o['name'] == 'Under')
-                        entry['O/U Line'] = round(float(over['point']), 1)
-                        entry['Over'] = to_american(over['price'])
-                        entry['Under'] = to_american(under['price'])
+                        over = next((o for o in market['outcomes'] if o['name'] == 'Over'), None)
+                        if over:
+                            entry['O/U Line'] = round(float(over['point']), 1)
+                            entry['Over'] = to_american(over['price'])
+                            # Find under price
+                            under = next((o for o in market['outcomes'] if o['name'] == 'Under'), None)
+                            entry['Under'] = to_american(under['price'])
                 
                 current_prices.append(entry)
         
         if current_prices:
+            # SAVING: This is where the error used to happen
             st.session_state.snapshot_vault[selected_game] = current_prices
             save_to_vault(st.session_state.snapshot_vault)
+            st.success(f"Snapshot Saved to Vault at {now_local}")
 
-# --- 4. DISPLAY ---
+# --- 5. DISPLAY ---
 st.divider()
 
+# Only try to display if the selected game has been scanned
 if 'selected_game' in locals() and selected_game in st.session_state.snapshot_vault:
     st.write(f"### 📊 Full Market Snapshot: {selected_game}")
     df = pd.DataFrame(st.session_state.snapshot_vault[selected_game])
     
-    # Sort columns for a cleaner look
-    cols = ['Book', 'Away ML', 'Home ML', 'O/U Line', 'Over', 'Under', 'Time']
-    df = df[cols]
+    # Ensure all columns exist before selecting them to prevent errors
+    cols_to_show = ['Book', 'Away ML', 'Home ML', 'O/U Line', 'Over', 'Under', 'Time']
+    available_cols = [c for c in cols_to_show if c in df.columns]
+    df = df[available_cols]
 
-    # Format for display (+100/-110)
+    # Format for display
     display_df = df.copy()
     for col in ['Away ML', 'Home ML', 'Over', 'Under']:
-        display_df[col] = display_df[col].apply(format_odds)
+        if col in display_df.columns:
+            display_df[col] = display_df[col].apply(format_odds)
 
     st.table(display_df)
+else:
+    st.info("Select a game and click 'Scan' to populate the vault.")
 
-    # VALUE ALERT
-    best_away = df.loc[df['Away ML'].idxmax()]
-    st.success(f"✅ **VALUE ALERT:** Best Moneyline for **{selected_game.split(' @ ')[0]}** is **{format_odds(best_away['Away ML'])}** at **{best_away['Book']}**")
